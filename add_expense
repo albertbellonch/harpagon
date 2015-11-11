@@ -1,0 +1,75 @@
+#!/usr/bin/env ruby
+
+require 'google/api_client'
+require 'google_drive'
+require 'json'
+require 'yaml'
+
+# Useful methods
+def load_client_id_and_secret
+  credentials = YAML.load_file('.google_drive.yml')
+  %w{ client_id client_secret }.map do |attr|
+    credentials[attr]
+  end
+end
+
+def create_session!(client_id, client_secret)
+  GoogleDrive.saved_session('.refresh_token.json',
+    nil, client_id, client_secret)
+end
+
+def load_spreadsheet(session)
+  google_drive = YAML.load_file('.google_drive.yml')
+  spreadsheet_key = google_drive['spreadsheet_key']
+  session.spreadsheet_by_key(spreadsheet_key)
+end
+
+def load_worksheet(spreadsheet, spreadsheet_key)
+  spreadsheet.worksheets.find do |worksheet|
+    worksheet.title == spreadsheet_key
+  end
+end
+
+def month_worksheet(spreadsheet)
+  month_abbreviations = YAML.load_file('.month_abbreviations.yml')
+  month_key = Date::MONTHNAMES[Date.today.month].downcase
+  month_abbreviation = month_abbreviations[month_key].capitalize
+  year_abbreviation = Date.today.year - 2000
+  spreadsheet_key = "#{month_abbreviation}/#{year_abbreviation}"
+  load_worksheet(spreadsheet, spreadsheet_key)
+end
+
+def calculations_worksheet(spreadsheet)
+  load_worksheet(spreadsheet, 'Càlculs')
+end
+
+def write_to_column(worksheet, name, amount, column, row)
+  loop do
+    break if worksheet[row, column] == ""
+    row += 1
+  end
+
+  worksheet[row, column] = name
+  worksheet[row, column + 1] = amount.to_s.gsub(/\./, ',')
+  worksheet.save
+end
+
+def add_expense(spreadsheet, name, amount)
+  write_to_column(month_worksheet(spreadsheet),
+    name, amount, 1, 20)
+end
+
+def add_card_debt(spreadsheet, name, amount)
+  write_to_column(calculations_worksheet(spreadsheet),
+    name, amount, 2, 1)
+end
+
+# Da flow
+name = "Supermercat"
+amount = 6.91
+card = true
+client_id, client_secret = load_client_id_and_secret
+session = create_session!(client_id, client_secret)
+spreadsheet = load_spreadsheet(session)
+add_expense(spreadsheet, name, amount)
+add_card_debt(spreadsheet, name, -amount) if card
